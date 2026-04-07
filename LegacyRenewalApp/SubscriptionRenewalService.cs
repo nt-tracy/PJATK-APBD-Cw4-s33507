@@ -1,4 +1,5 @@
 using System;
+using LegacyRenewalApp.Exceptions;
 
 namespace LegacyRenewalApp
 {
@@ -11,25 +12,26 @@ namespace LegacyRenewalApp
             string paymentMethod,
             bool includePremiumSupport,
             bool useLoyaltyPoints)
+        
         {
             if (customerId <= 0)
             {
-                throw new ArgumentException("Customer id must be positive");
+                throw new NegativeCustomerIdException();
             }
 
             if (string.IsNullOrWhiteSpace(planCode))
             {
-                throw new ArgumentException("Plan code is required");
+                throw new InvalidPlanCodeException();
             }
 
             if (seatCount <= 0)
             {
-                throw new ArgumentException("Seat count must be positive");
+                throw new NegativeSeatCountException();
             }
 
             if (string.IsNullOrWhiteSpace(paymentMethod))
             {
-                throw new ArgumentException("Payment method is required");
+                throw new InvalidPaymentMethodException();
             }
 
             string normalizedPlanCode = planCode.Trim().ToUpperInvariant();
@@ -43,7 +45,7 @@ namespace LegacyRenewalApp
 
             if (!customer.IsActive)
             {
-                throw new InvalidOperationException("Inactive customers cannot renew subscriptions");
+                throw new InactiveCustomerException();
             }
 
             decimal baseAmount = (plan.MonthlyPricePerSeat * seatCount * 12m) + plan.SetupFee;
@@ -154,7 +156,7 @@ namespace LegacyRenewalApp
             }
             else
             {
-                throw new ArgumentException("Unsupported payment method");
+                throw new UnsupportedPaymentMethod();
             }
 
             decimal taxRate = 0.20m;
