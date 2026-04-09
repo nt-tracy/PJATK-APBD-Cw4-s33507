@@ -1,4 +1,4 @@
-﻿using LegacyRenewalApp.Services.TaxProviderService;
+﻿using LegacyRenewalApp;
 
 public interface ITaxProviderService
 {

@@ -1,4 +1,4 @@
-﻿namespace LegacyRenewalApp.Services.DiscountService;
+﻿namespace LegacyRenewalApp;
 
 public interface IDiscountService
 {

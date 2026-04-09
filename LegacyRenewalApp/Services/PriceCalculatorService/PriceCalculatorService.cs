@@ -1,6 +1,6 @@
 ﻿using LegacyRenewalApp.Exceptions;
 
-namespace LegacyRenewalApp.Services.PriceCalculatorService;
+namespace LegacyRenewalApp;
 public class PriceCalculatorService : IPriceCalculatorService
 {
     public decimal CalculateBaseAmount(decimal monthlyPrice, int seatCount, decimal setupFee) 

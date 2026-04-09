@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-namespace LegacyRenewalApp.Services.DiscountService;
+namespace LegacyRenewalApp;
 
 public class DiscountService : IDiscountService
 {
