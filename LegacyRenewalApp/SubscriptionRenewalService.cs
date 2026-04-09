@@ -10,15 +10,13 @@ namespace LegacyRenewalApp
         private readonly IValidationService _validationService;
         private readonly IBillingService _billingService;
         
-        // Konstruktor domyślny
         public SubscriptionRenewalService() : this(
             new DiscountService(), 
             new PriceCalculatorService(), 
             new TaxProviderService(), 
             new ValidationService(),
             new BillingService()) { }
-
-        // Konstruktor z parametrami
+        
         public SubscriptionRenewalService(
             IDiscountService discountService,
             IPriceCalculatorService priceCalculator,
@@ -37,17 +35,14 @@ namespace LegacyRenewalApp
 
         public RenewalInvoice CreateRenewalInvoice(int customerId, string planCode, int seatCount, string paymentMethod, bool includePremiumSupport, bool useLoyaltyPoints)
         {
-            // 1. Walidacja
             _validationService.ValidateRenewalInputs(customerId, planCode, seatCount, paymentMethod);
 
-            // 2. Pobranie danych
             string normalizedPlanCode = planCode.Trim().ToUpperInvariant();
             var plan = new SubscriptionPlanRepository().GetByCode(normalizedPlanCode);
             var customer = new CustomerRepository().GetById(customerId);
             
             _validationService.ValidateBusinessRules(customer);
 
-            // 3. Obliczenia
             decimal baseAmount = _priceCalculator.CalculateBaseAmount(plan.MonthlyPricePerSeat, seatCount, plan.SetupFee);
             var discount = _discountService.GetDiscountResult(customer, plan, seatCount, baseAmount, useLoyaltyPoints);
             
@@ -62,19 +57,16 @@ namespace LegacyRenewalApp
             var support = _priceCalculator.GetSupportFee(normalizedPlanCode, includePremiumSupport);
             var payment = _priceCalculator.CalculatePaymentFee(subtotal + support.Discount, paymentMethod.Trim().ToUpperInvariant());
 
-            // 4. Podatki
             decimal taxBase = subtotal + support.Discount + payment.Discount;
             decimal taxAmount = _taxProvider.CalculateTaxAmount(taxBase, customer.Country);
             var finalResult = _taxProvider.FinalizeGrossAmount(taxBase, taxAmount);
 
-            // 5. Składanie notatek
             notes += support.Note + payment.Note;
             if (finalResult.MinimumApplied)
             {
                 notes += "minimum invoice amount applied; ";
             }
 
-            // 6. Budowanie obiektu faktury
             var invoice = new RenewalInvoice
             {
                 InvoiceNumber = $"INV-{DateTime.UtcNow:yyyyMMdd}-{customerId}-{normalizedPlanCode}",
