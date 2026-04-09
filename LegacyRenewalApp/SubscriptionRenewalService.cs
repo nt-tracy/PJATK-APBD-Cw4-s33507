@@ -1,107 +1,101 @@
 using System;
-using LegacyRenewalApp.Exceptions;
-using LegacyRenewalApp.Services.DiscountService;
-using LegacyRenewalApp.Services.PriceCalculatorService;
-using LegacyRenewalApp.Services.TaxProviderService;
 
-namespace LegacyRenewalApp.Services
+namespace LegacyRenewalApp
 {
     public class SubscriptionRenewalService
     {
-        private readonly IDiscountService _discountService = new DiscountService.DiscountService();
-        private readonly IPriceCalculatorService _priceCalculator = new PriceCalculatorService.PriceCalculatorService();
-        private readonly ITaxProviderService _taxProvider = new TaxProviderService.TaxProviderService();
+        private readonly IDiscountService _discountService;
+        private readonly IPriceCalculatorService _priceCalculator;
+        private readonly ITaxProviderService _taxProvider;
+        private readonly IValidationService _validationService;
+        private readonly IBillingService _billingService;
+        
+        // Konstruktor domyślny
+        public SubscriptionRenewalService() : this(
+            new DiscountService(), 
+            new PriceCalculatorService(), 
+            new TaxProviderService(), 
+            new ValidationService(),
+            new BillingService()) { }
 
-        public RenewalInvoice CreateRenewalInvoice(
-            int customerId,
-            string planCode,
-            int seatCount,
-            string paymentMethod,
-            bool includePremiumSupport,
-            bool useLoyaltyPoints)
+        // Konstruktor z parametrami
+        public SubscriptionRenewalService(
+            IDiscountService discountService,
+            IPriceCalculatorService priceCalculator,
+            ITaxProviderService taxProvider,
+            IValidationService validationService,
+            IBillingService billingService)
         {
-            ValidateInput(customerId, planCode, seatCount, paymentMethod);
+            _discountService = discountService;
+            _priceCalculator = priceCalculator;
+            _taxProvider = taxProvider;
+            _validationService = validationService;
+            _billingService = billingService;
+        }
+        
+        
 
+        public RenewalInvoice CreateRenewalInvoice(int customerId, string planCode, int seatCount, string paymentMethod, bool includePremiumSupport, bool useLoyaltyPoints)
+        {
+            // 1. Walidacja
+            _validationService.ValidateRenewalInputs(customerId, planCode, seatCount, paymentMethod);
+
+            // 2. Pobranie danych
             string normalizedPlanCode = planCode.Trim().ToUpperInvariant();
-            string normalizedPaymentMethod = paymentMethod.Trim().ToUpperInvariant();
             var plan = new SubscriptionPlanRepository().GetByCode(normalizedPlanCode);
             var customer = new CustomerRepository().GetById(customerId);
-
-            if (!customer.IsActive) throw new InactiveCustomerException();
-            string notes = string.Empty;
-
-            decimal baseAmount = _priceCalculator.CalculateBaseAmount(plan.MonthlyPricePerSeat, seatCount, plan.SetupFee);
             
-            var discountResult = _discountService.GetDiscountResult(customer, plan, seatCount, baseAmount, useLoyaltyPoints);
-            decimal discountAmount = discountResult.Discount;
-            notes += discountResult.Note;
+            _validationService.ValidateBusinessRules(customer);
 
-            decimal subtotalAfterDiscount = baseAmount - discountAmount;
-            if (subtotalAfterDiscount < 300m)
+            // 3. Obliczenia
+            decimal baseAmount = _priceCalculator.CalculateBaseAmount(plan.MonthlyPricePerSeat, seatCount, plan.SetupFee);
+            var discount = _discountService.GetDiscountResult(customer, plan, seatCount, baseAmount, useLoyaltyPoints);
+            
+            decimal subtotal = Math.Max(300m, baseAmount - discount.Discount);
+            string notes = discount.Note;
+
+            if (subtotal <= 300m && baseAmount - discount.Discount < 300m)
             {
-                subtotalAfterDiscount = 300m;
                 notes += "minimum discounted subtotal applied; ";
             }
 
             var support = _priceCalculator.GetSupportFee(normalizedPlanCode, includePremiumSupport);
-            notes += support.Note;
+            var payment = _priceCalculator.CalculatePaymentFee(subtotal + support.Discount, paymentMethod.Trim().ToUpperInvariant());
 
-            var payment = _priceCalculator.CalculatePaymentFee(subtotalAfterDiscount + support.Discount, normalizedPaymentMethod);
-            notes += payment.Note;
-
-            decimal taxBase = subtotalAfterDiscount + support.Discount + payment.Discount;
+            // 4. Podatki
+            decimal taxBase = subtotal + support.Discount + payment.Discount;
             decimal taxAmount = _taxProvider.CalculateTaxAmount(taxBase, customer.Country);
             var finalResult = _taxProvider.FinalizeGrossAmount(taxBase, taxAmount);
-            
-            if (finalResult.MinimumApplied) notes += "minimum invoice amount applied; ";
 
-            var invoice = CreateInvoiceObject(customerId, customer.FullName, normalizedPlanCode, normalizedPaymentMethod, seatCount, 
-                                            baseAmount, discountAmount, support.Discount, payment.Discount, taxAmount, finalResult.FinalAmount, notes);
-
-            LegacyBillingGateway.SaveInvoice(invoice);
-            SendNotification(customer, invoice, normalizedPlanCode);
-
-            return invoice;
-        }
-
-        private void ValidateInput(int customerId, string planCode, int seatCount, string paymentMethod)
-        {
-            if (customerId <= 0) throw new NegativeCustomerIdException();
-            if (string.IsNullOrWhiteSpace(planCode)) throw new InvalidPlanCodeException();
-            if (seatCount <= 0) throw new NegativeSeatCountException();
-            if (string.IsNullOrWhiteSpace(paymentMethod)) throw new InvalidPaymentMethodException();
-        }
-
-        private void SendNotification(Customer customer, RenewalInvoice invoice, string planCode)
-        {
-            if (string.IsNullOrWhiteSpace(customer.Email)) return;
-
-            string subject = "Subscription renewal invoice";
-            string body = $"Hello {customer.FullName}, your renewal for plan {planCode} " +
-                         $"has been prepared. Final amount: {invoice.FinalAmount:F2}.";
-
-            LegacyBillingGateway.SendEmail(customer.Email, subject, body);
-        }
-
-        private RenewalInvoice CreateInvoiceObject(int customerId, string name, string plan, string method, int seats, 
-            decimal baseAmt, decimal discAmt, decimal suppFee, decimal payFee, decimal taxAmt, decimal finalAmt, string notes)
-        {
-            return new RenewalInvoice
+            // 5. Składanie notatek
+            notes += support.Note + payment.Note;
+            if (finalResult.MinimumApplied)
             {
-                InvoiceNumber = $"INV-{DateTime.UtcNow:yyyyMMdd}-{customerId}-{plan}",
-                CustomerName = name,
-                PlanCode = plan,
-                PaymentMethod = method,
-                SeatCount = seats,
-                BaseAmount = Math.Round(baseAmt, 2, MidpointRounding.AwayFromZero),
-                DiscountAmount = Math.Round(discAmt, 2, MidpointRounding.AwayFromZero),
-                SupportFee = Math.Round(suppFee, 2, MidpointRounding.AwayFromZero),
-                PaymentFee = Math.Round(payFee, 2, MidpointRounding.AwayFromZero),
-                TaxAmount = taxAmt,
-                FinalAmount = finalAmt,
+                notes += "minimum invoice amount applied; ";
+            }
+
+            // 6. Budowanie obiektu faktury
+            var invoice = new RenewalInvoice
+            {
+                InvoiceNumber = $"INV-{DateTime.UtcNow:yyyyMMdd}-{customerId}-{normalizedPlanCode}",
+                CustomerName = customer.FullName,
+                PlanCode = normalizedPlanCode,
+                PaymentMethod = paymentMethod.Trim().ToUpperInvariant(),
+                SeatCount = seatCount,
+                BaseAmount = Math.Round(baseAmount, 2, MidpointRounding.AwayFromZero),
+                DiscountAmount = Math.Round(discount.Discount, 2, MidpointRounding.AwayFromZero),
+                SupportFee = Math.Round(support.Discount, 2, MidpointRounding.AwayFromZero),
+                PaymentFee = Math.Round(payment.Discount, 2, MidpointRounding.AwayFromZero),
+                TaxAmount = taxAmount,
+                FinalAmount = finalResult.FinalAmount,
                 Notes = notes.Trim(),
                 GeneratedAt = DateTime.UtcNow
             };
+
+            _billingService.Save(invoice);
+            _billingService.NotifyCustomer(customer, invoice, normalizedPlanCode);
+
+            return invoice;
         }
     }
 }
