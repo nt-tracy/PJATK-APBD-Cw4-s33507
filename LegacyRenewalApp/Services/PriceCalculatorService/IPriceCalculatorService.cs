@@ -1,4 +1,4 @@
-﻿namespace LegacyRenewalApp.Services.PriceCalculator;
+﻿namespace LegacyRenewalApp.Services.PriceCalculatorService;
 
 public interface IPriceCalculatorService
 {

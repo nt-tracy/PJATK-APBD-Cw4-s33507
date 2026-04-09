@@ -1,7 +1,5 @@
 ﻿using System;
-using LegacyRenewalApp.TaxProvider;
-
-namespace LegacyRenewalApp.Services.TaxProvider;
+namespace LegacyRenewalApp.Services.TaxProviderService;
 
 public class TaxProviderService : ITaxProviderService
 {

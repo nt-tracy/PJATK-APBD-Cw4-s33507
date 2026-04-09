@@ -1,4 +1,4 @@
-﻿namespace LegacyRenewalApp.TaxProvider;
+﻿using LegacyRenewalApp.Services.TaxProviderService;
 
 public interface ITaxProviderService
 {

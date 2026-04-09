@@ -1,6 +1,6 @@
 ﻿using System;
-
-namespace LegacyRenewalApp;
+using System.Collections.Generic;
+namespace LegacyRenewalApp.Services.DiscountService;
 
 public class DiscountService : IDiscountService
 {
@@ -39,4 +39,32 @@ public class DiscountService : IDiscountService
 
         return new CalculationResult( 0.0m, String.Empty);
     }
+    
+    public CalculationResult GetDiscountResult(Customer customer, SubscriptionPlan plan, int seatCount, decimal baseAmount, bool useLoyaltyPoints)
+    {
+        var discounts = new List<CalculationResult>
+        {
+            GetDiscountFromCustomerSegment(customer.Segment, plan.IsEducationEligible, baseAmount),
+            GetDiscountFromYearsWithCompany(customer.YearsWithCompany, baseAmount),
+            GetDiscountFromSeatCount(seatCount, baseAmount)
+        };
+
+        if (useLoyaltyPoints && customer.LoyaltyPoints > 0)
+        {
+            int pointsToUse = customer.LoyaltyPoints > 200 ? 200 : customer.LoyaltyPoints;
+            discounts.Add(new CalculationResult(pointsToUse, $"loyalty points used: {pointsToUse}; "));
+        }
+
+        decimal totalAmount = 0;
+        string totalNotes = string.Empty;
+
+        foreach (var d in discounts)
+        {
+            totalAmount += d.Discount; 
+            totalNotes += d.Note;  
+        }
+
+        return new CalculationResult(totalAmount, totalNotes);
+    }
+    
 }
