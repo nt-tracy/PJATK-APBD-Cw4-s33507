@@ -1,7 +1,7 @@
 ﻿namespace LegacyRenewalApp;
 
-public class DiscountResult
+public class DiscountResult(decimal discount, string note)
 {
-    public decimal Discount { get; set; } = 0;
-    public string Note { get; set; } = string.Empty;
+    public decimal Discount { get; set; } = discount;
+    public string Note { get; set; } = note;
 }
